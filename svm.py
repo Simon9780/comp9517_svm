@@ -194,7 +194,7 @@ def test(model, vgg_model, trans, test_set_path, test_label_path):
             cv2.rectangle(cv_image,(int(b[0]*1280),int(b[1]*720)),(int(b[0]+b[2]*1280),int(b[0]+b[3]*720)),(0,0,255),5)
 
         cv2.imwrite("./results/"+file_name,cv_image)
-        return
+        #return
     #print(results)
 
     iou = 0

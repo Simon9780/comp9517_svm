@@ -246,7 +246,7 @@ def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('--images_path', type=str, default="./test_images")
     parser.add_argument('--label_path', type=str, default='./test_labels')
-    parser.add_argument('--train', type=str, default=False)
+    parser.add_argument('--train', type=bool, default=False)
 
     return parser.parse_args()
 

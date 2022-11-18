@@ -10,9 +10,47 @@ from torchvision import models, transforms
 from PIL import Image
 import argparse
 
-def test(model, vgg_model, trans, test_set_path):
+def train(path, empty_path):
+    x_set = []
+    for file_name in os.listdir(path):
+        x_set.append(np.load(path+'/'+file_name)[0])
+
+    y_set = [1 for i in x_set]
+
+    counter = 0
+    for file_name in os.listdir(empty_path):
+        if counter < 10000:
+            x_set.append(np.load(empty_path+'/'+file_name)[0])
+            y_set.append(-1)
+        counter += 1
+
+    print("data loaded")
+    print(len(x_set))
+
+    train_data,test_data,train_label,test_label = train_test_split(x_set,y_set,random_state=0,train_size=0.8,test_size=0.2)
+    print("data splited")
+    print("Train set size:", len(train_data))
+    print("Test set size:", len(test_data))
+
+    classifier=svm.SVC(C=1,kernel='rbf',gamma=1,decision_function_shape='ovr')
+    classifier.fit(train_data,train_label)
+    print("model fitted")
+
+    print("Test set score:",classifier.score(test_data,test_label))
+
+    s=pickle.dumps(classifier)
+    f=open('svm.model', "wb+")
+    f.write(s)
+    f.close()
+    print ("Done\n")
+
+    return classifier
+
+def test(model, vgg_model, trans, test_set_path, test_label_path):
+    results = []
     for file_name in os.listdir(test_set_path):
-        print(os.path.join(test_set_path, file_name))
+        label_file = os.path.join(test_label_path, file_name.replace(".jpg", ".txt"))
+
         image = cv2.imread(os.path.join(test_set_path, file_name))
 
         splits = []
@@ -106,6 +144,50 @@ def test(model, vgg_model, trans, test_set_path):
                     h = ((y2 - y1) * 8 + 16)/720
 
                     bounding_box_list.append([x,y,w,h])
+
+        target_list = []
+        f = open(label_file, "r")
+        lines = f.readlines()
+        for line in lines:
+            l = line.split(" ")
+            target_list.append([float(l[1]), float(l[2]), float(l[3]), float(l[4])])
+
+        
+        for t in target_list:
+            r_list = []
+            for b in bounding_box_list:
+                t_x1 = t[0]
+                t_y1 = t[1]
+                t_x2 = t[2] + t_x1
+                t_y2 = t[3] + t_y1
+
+                b_x1 = b[0]
+                b_y1 = b[1]
+                b_x2 = b[2] + b_x1
+                b_y2 = b[3] + b_y1
+
+                i_x1 = t_x1 if t_x1 > b_x1 else b_x1
+                i_y1 = t_y1 if t_y1 > b_y1 else b_y1
+                i_x2 = t_x2 if t_x2 < b_x2 else b_x2
+                i_y2 = t_y2 if t_y2 < b_y2 else b_y2
+                
+                area_t = t[2] * t[3]
+                area_b = b[2] * b[3]
+                area_i = (i_x2 - i_x1) * (i_y2 - i_y1)
+                area_u = area_t + area_b - area_i
+
+                p = area_i / area_b
+                r = area_i / area_t
+                iou = area_i / area_u
+
+                r_list.append([iou, p, r])
+            
+            picked = []
+            for r in r_list:
+                if picked == [] or r[0] > picked[0]:
+                    picked = r
+            #print(picked)
+            results.append(picked)
         
         cv_image = cv2.imread(os.path.join(test_set_path, file_name),1)
         for b in bounding_box_list:
@@ -114,6 +196,18 @@ def test(model, vgg_model, trans, test_set_path):
         cv2.imwrite("./results/"+file_name,cv_image)
         #return
     #print(results)
+
+    iou = 0
+    f2 = 0
+    for r in results:
+        f2 += 5*r[1]*r[2]/(4*(r[1]+r[2]))
+        iou += r[0]
+
+    iou_average = iou/len(results)
+    f2_average = f2/len(results)
+
+    print("Average IoU:", iou_average)
+    print("Average F2:", f2_average)
 
 def make_vgg_model():
     trans = transforms.Compose([
@@ -150,7 +244,9 @@ def extract_feature(image_array,model,trans):
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--images_path', type=str, default="./test_images/")
+    parser.add_argument('--images_path', type=str, default="./test_images")
+    parser.add_argument('--label_path', type=str, default='./test_labels')
+    parser.add_argument('--train', type=bool, default=False)
 
     return parser.parse_args()
 
@@ -158,17 +254,19 @@ if __name__ == '__main__':
     opt = parse_opt()
     feature_path = './features'
     no_feature_path = './empty_features'
+    train_again = opt.train
 
     test_set_path = opt.images_path
+    test_label_path = opt.label_path
 
-    if os.path.exists("svm.model"):
+    if os.path.exists("svm.model") and not train_again:
         f=open('svm.model','rb')
         s=f.read()
         model=pickle.loads(s)
     else: 
-        print("Model does not exists")
-        exit()
+        print("Training")
+        model = train(feature_path, no_feature_path)
 
     vgg_model, trans = make_vgg_model()
     print("Testing")
-    test(model, vgg_model, trans, test_set_path)
+    test(model, vgg_model, trans, test_set_path, test_label_path)

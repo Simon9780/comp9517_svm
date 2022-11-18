@@ -8,6 +8,7 @@ import torch
 from torch import nn
 from torchvision import models, transforms
 from PIL import Image
+import argparse
 
 def train(path, empty_path):
     x_set = []
@@ -241,13 +242,22 @@ def extract_feature(image_array,model,trans):
 
     return features
 
+def parse_opt():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--images_path', type=str, default="./test_images")
+    parser.add_argument('--label_path', type=str, default='./test_labels')
+    parser.add_argument('--train', type=str, default=False)
+
+    return parser.parse_args()
+
 if __name__ == '__main__':
+    opt = parse_opt()
     feature_path = './features'
     no_feature_path = './empty_features'
-    train_again = False
+    train_again = opt.train
 
-    test_set_path = './test_images/'
-    test_label_path = './test_labels/'
+    test_set_path = opt.label_path
+    test_label_path = opt.images_path
 
     if os.path.exists("svm.model") and not train_again:
         f=open('svm.model','rb')
